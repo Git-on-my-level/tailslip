@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tailslip"
+version = "0.1.0"
+description = "Hand a value (one-time code, token, passphrase, text, file) from a human on a clean web page to a waiting process or agent on another machine, over your tailnet."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Git-on-my-level" }]
+keywords = ["tailscale", "tailnet", "secrets", "otp", "handoff", "agents", "headless", "cli"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Security",
+  "Topic :: Utilities",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Git-on-my-level/tailslip"
+Issues = "https://github.com/Git-on-my-level/tailslip/issues"
+
+[project.scripts]
+tailslip = "tailslip.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

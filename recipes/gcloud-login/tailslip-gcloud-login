@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# tailslip-gcloud-login: a human `gcloud auth login` for a headless machine,
+# finished from your phone over the tailnet.
+#
+#   tailslip-gcloud-login [tailslip options...]
+#   e.g. tailslip-gcloud-login --timeout 10m --allow you@example.com
+#
+# What happens:
+#   1. `gcloud auth login --no-launch-browser --update-adc` starts on a pty that
+#      tailslip owns (gcloud refuses to prompt without a TTY).
+#   2. tailslip prints a one-time tailnet URL. Open it on any device signed in to
+#      your tailnet. The page shows a "Sign in to Google Cloud" button (the OAuth
+#      URL captured from gcloud's output) and a field for the verification code.
+#   3. The code is typed into that same gcloud process (the code is bound to the
+#      session that printed the link, so it must reach exactly this process).
+#      Whoever started this script (an agent, a CI job) never sees the code.
+#
+# Guards, carried over from the script this recipe generalizes:
+#   - GOOGLE_APPLICATION_CREDENTIALS and other credential-file overrides are
+#     cleared so a bot credential cannot shadow the human login;
+#   - refuses to log a human into a CLOUDSDK_CONFIG that already holds a service
+#     account (identity mixing); override with TAILSLIP_GCLOUD_FORCE=1;
+#   - --update-adc refreshes Application Default Credentials in the same step.
+#
+# Env: GCLOUD (path to gcloud), CLOUDSDK_CONFIG (target config dir),
+#      TAILSLIP_GCLOUD_FORCE=1, TAILSLIP (path to tailslip).
+set -euo pipefail
+
+GCLOUD="${GCLOUD:-gcloud}"
+TAILSLIP="${TAILSLIP:-tailslip}"
+command -v "$GCLOUD" >/dev/null 2>&1 || { echo "gcloud not found (set GCLOUD=/path/to/gcloud)" >&2; exit 2; }
+command -v "$TAILSLIP" >/dev/null 2>&1 || { echo "tailslip not found (pipx install tailslip, or set TAILSLIP=...)" >&2; exit 2; }
+
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
+  echo "note: clearing GOOGLE_APPLICATION_CREDENTIALS for this login (a bot credential must not shadow a human login)" >&2
+fi
+unset GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE CLOUDSDK_AUTH_ACCESS_TOKEN_FILE
+
+if [ -n "${CLOUDSDK_CONFIG:-}" ] && [ "${TAILSLIP_GCLOUD_FORCE:-0}" != "1" ]; then
+  current="$("$GCLOUD" config get-value account 2>/dev/null | tail -n 1 || true)"
+  case "$current" in
+    *.gserviceaccount.com)
+      echo "REFUSING: CLOUDSDK_CONFIG=$CLOUDSDK_CONFIG already holds service account $current." >&2
+      echo "A human login there would mix identities. Unset CLOUDSDK_CONFIG or point it at a fresh" >&2
+      echo "directory, or set TAILSLIP_GCLOUD_FORCE=1 if you really mean it." >&2
+      exit 4
+      ;;
+  esac
+fi
+
+set +e
+"$TAILSLIP" exec \
+  --label "Google Cloud verification code" \
+  --prompt "Sign in with the Google account this machine should use, then paste the verification code Google shows you." \
+  --url-regex 'https://accounts\.google\.com/o/oauth2/auth\S+' \
+  --link-text "Sign in to Google Cloud" \
+  --wait-for '(?i)verification code' \
+  --submit-text "Finish login" \
+  "$@" \
+  -- "$GCLOUD" auth login --no-launch-browser --update-adc --quiet
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+  echo "identity: $("$GCLOUD" config get-value account 2>/dev/null | tail -n 1)" >&2
+  cfg="${CLOUDSDK_CONFIG:-$HOME/.config/gcloud}"
+  if [ -r "$cfg/application_default_credentials.json" ]; then
+    echo "adc:      $cfg/application_default_credentials.json" >&2
+  fi
+elif [ "$rc" -eq 3 ]; then
+  echo "timed out waiting for the verification code" >&2
+fi
+exit "$rc"
