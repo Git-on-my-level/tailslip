@@ -25,7 +25,9 @@ def launch(args, tmp):
     deadline = time.time() + 15
     while not os.path.exists(url_file):
         if p.poll() is not None or time.time() > deadline:
-            out, err = p.communicate(timeout=5)
+            if p.poll() is None:
+                p.kill()
+            out, err = p.communicate(timeout=10)
             raise AssertionError(f"tailslip did not start: rc={p.returncode} err={err.decode()}")
         time.sleep(0.05)
     with open(url_file) as f:

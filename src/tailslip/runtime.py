@@ -65,6 +65,7 @@ class Handoff:
             self.server = None
             raise
         self.session.public_origin = origin
+        self.session.restart_clock()
         serve_in_background(self.server)
         url = self.session.url
         r = self.request

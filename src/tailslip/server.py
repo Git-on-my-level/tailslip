@@ -19,6 +19,7 @@ import hmac
 import re
 import secrets
 import socket
+import socketserver
 import threading
 import time
 from dataclasses import dataclass
@@ -118,6 +119,10 @@ class Session:
 
     def set_link(self, url: str) -> None:
         self._link = validate_link(url)
+
+    def restart_clock(self) -> None:
+        """Start the expiry window now (called once the page is reachable)."""
+        self.deadline = self.clock() + self.request.timeout
 
     def remaining(self) -> float:
         return max(0.0, self.deadline - self.clock())
@@ -484,6 +489,14 @@ class _Server(ThreadingHTTPServer):
     def __init__(self, addr, handler, family):
         self.address_family = family
         super().__init__(addr, handler)
+
+    def server_bind(self):
+        # HTTPServer.server_bind() calls socket.getfqdn(), a reverse DNS lookup
+        # that can stall for tens of seconds on some hosts. We never need it.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
 
 def make_server(session: Session, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
